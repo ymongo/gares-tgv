@@ -90,6 +90,8 @@ def has_wikipedia_tgv_mention(intitule_gare: str):
         """ Correctifs data"""
     elif intitule_gare == "Calais":
         intitule_gare = "Calais-Ville"
+    elif intitule_gare == "Valence":
+        intitule_gare = "Valence-Ville"
     elif intitule_gare == 'Futuroscope':
         prefixe_gare = "Gare_du_"
     
@@ -115,6 +117,15 @@ def has_wikipedia_tgv_mention(intitule_gare: str):
 
 
 def main():
+
+    # """to check against https://fr.wikipedia.org/wiki/Liste_des_gares_desservies_par_TGV"""
+    # if True:
+    #     check = pd.read_csv('output.csv', engine="python", on_bad_lines=print_badline)
+    #     with open('check.txt', 'w',  encoding='utf-8') as f:
+    #         for text in check['Intitulé plateforme'].sort_values().tolist():
+    #             f.write(text + '\n')
+    #     return
+    
     """ Main entry point of the app """
     logger.info("hello world")
 
@@ -163,7 +174,8 @@ def main():
 
     """clean up, save to file"""
     gares_tgv = gares_tgv.drop_duplicates(subset=['Code gare'])
-    gares_tgv.to_csv('output.csv')
+    gares_tgv.to_csv('output.csv', encoding='utf-8')
+    logger.info(f"final gares tgv count: {gares_tgv.shape[0]}")
 
     """save failed wikipedia request"""
     with open(r'failed_wikipedia-requests.txt', 'w', encoding='utf-8') as fp:
