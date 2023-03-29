@@ -9,6 +9,7 @@ __version__ = "0.1.0"
 __license__ = "MIT"
 
 
+import argparse
 import pandas as pd
 from bs4 import BeautifulSoup as bs
 import requests
@@ -22,7 +23,7 @@ retry_strategy = Retry(
     total=5,
     backoff_factor=1,
     status_forcelist=[ 500, 502, 503, 504],
-    method_whitelist=["HEAD", "GET", "OPTIONS"]
+    allowed_methods=["HEAD", "GET", "OPTIONS"]
 )
 adapter = HTTPAdapter(max_retries=retry_strategy)
 session.mount("https://", adapter)
@@ -34,6 +35,7 @@ GARES_SNCF_URL="https://ressources.data.sncf.com/api/explore/v2.1/catalog/datase
 HORAIRES_GARES_SNCF_URL = 'https://www.garesetconnexions.sncf/fr/gares-services/{gare}/horaires'
 API_HORAIRES = "https://garesetconnexions-online.azure-api.net/API/PIV/Departures/00{code}" 
 WIKIPEDIA_GARES_URL = "https://fr.wikipedia.org/wiki/{nom_gare}"
+WIKIPEDIA_LISTES_GARES_TGV_URL = "https://fr.wikipedia.org/wiki/Liste_des_gares_desservies_par_TGV"
 sncf_apikey = ""
 failed_wikipedia_request = []
 
@@ -82,18 +84,33 @@ def has_wikipedia_tgv_mention(intitule_gare: str):
         intitule_gare = intitule_gare.split('Le-')[1].strip()
         prefixe_gare = "Gare_du_"
     elif "La-" in intitule_gare[0:3]:
-        intitule_gare = intitule_gare.replace('La-', 'La_')
+        intitule_gare = intitule_gare.replace('La-', 'La_',1)
         prefixe_gare = "Gare_de_"
     elif intitule_gare[0].lower() in ["a", "e", "é", "i", "o", "u", "y"] :
         prefixe_gare = "Gare_d'"
 
         """ Correctifs data"""
-    elif intitule_gare == "Calais":
+    if intitule_gare ==  "Mâcon":
+        intitule_gare = "Mâcon-Ville"
+    if intitule_gare == "Calais":
         intitule_gare = "Calais-Ville"
     elif intitule_gare == "Valence":
         intitule_gare = "Valence-Ville"
     elif intitule_gare == 'Futuroscope':
         prefixe_gare = "Gare_du_"
+    elif intitule_gare == "Saint-Maixent-L'École":
+        intitule_gare = "Saint-Maixent_(Deux-Sèvres)"
+    elif "Plagne" in intitule_gare:
+        intitule_gare = "Aime-La_Plagne"
+    elif intitule_gare == "Saint-Gervais-les-Bains-Le-Fayet":
+        intitule_gare = "Saint-Gervais-les-Bains-Le_Fayet"
+    elif "Aix-" in intitule_gare:
+        intitule_gare = "Aix-les-Bains-Le_Revard"
+    
+    if '_Le-' in intitule_gare:
+        intitule_gare = intitule_gare.replace('_Le-', '_Le_')
+    elif '_La-' in intitule_gare:
+        intitule_gare = intitule_gare.replace('_La-', '_La_')
     
     url = WIKIPEDIA_GARES_URL.format(nom_gare=prefixe_gare+intitule_gare)
     data = get_url(url)
@@ -115,16 +132,19 @@ def has_wikipedia_tgv_mention(intitule_gare: str):
         logger.info(f"is {intitule_gare} une gare tgv by wikipedia? {is_gare_tgv_by_wikipedia}")
     return is_gare_tgv_by_wikipedia
 
+def main(args):
 
-def main():
-
-    # """to check against https://fr.wikipedia.org/wiki/Liste_des_gares_desservies_par_TGV"""
-    # if True:
-    #     check = pd.read_csv('output.csv', engine="python", on_bad_lines=print_badline)
-    #     with open('check.txt', 'w',  encoding='utf-8') as f:
-    #         for text in check['Intitulé plateforme'].sort_values().tolist():
-    #             f.write(text + '\n')
-    #     return
+    if args.check: 
+        wiki_liste_gares_sncf_data = get_url(WIKIPEDIA_LISTES_GARES_TGV_URL)
+        soup = bs(wiki_liste_gares_sncf_data.content, "html5lib")
+        gares_fr_table = soup.find('table', {"class":"wikitable sortable"})
+        gares_fr_table_df = pd.read_html(str(gares_fr_table))[0]
+        gares_fr_table_df["Gare cleaned"]= gares_fr_table_df["Gare"].apply(lambda x: x.replace(' - ', ' ').replace('-', ' '))
+        gares_tgv = pd.read_csv('output.csv', engine="python", on_bad_lines=print_badline)
+        gares_fr_table_df["Gare identified"]= gares_tgv["Intitulé plateforme"].apply(lambda x: x.replace(' - ', ' ').replace('-', ' '))
+        gares_fr_table_df["Checked"]= gares_fr_table_df["Gare cleaned"].apply(lambda x: x).isin(gares_fr_table_df["Gare identified"])
+        gares_fr_table_df.to_csv('check.csv', encoding="utf-8")
+        return
     
     """ Main entry point of the app """
     logger.info("hello world")
@@ -173,7 +193,7 @@ def main():
     logger.info(f"remaining gares after wikipedia: {gares.shape[0]}")
 
     """clean up, save to file"""
-    gares_tgv = gares_tgv.drop_duplicates(subset=['Code gare'])
+    gares_tgv = gares_tgv.drop_duplicates(subset=['Code gare']).sort_values(by=['Intitulé plateforme'])
     gares_tgv.to_csv('output.csv', encoding='utf-8')
     logger.info(f"final gares tgv count: {gares_tgv.shape[0]}")
 
@@ -183,6 +203,16 @@ def main():
         for item in failed_wikipedia_request:
             fp.write("%s\n" % item)
 
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--check",
+        action="store_true")
+
+    return parser.parse_args()
+
 if __name__ == "__main__":
     """ This is executed when run from the command line """
-    main()
+    args = args = get_args()
+    main(args)

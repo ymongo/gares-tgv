@@ -99,6 +99,6 @@ ENV/
 .mypy_cache/
 
 #output files
-output.csv
 failed_wikipedia-requests.txt
-check.txt
+check.*
+liste_gares_wiki.*
